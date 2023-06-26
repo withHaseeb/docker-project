@@ -1,0 +1,46 @@
+pipeline {
+    agent any
+    environment {
+        PATH ="$PATH:/opt/apache-maven-3.9.2/bin"
+    }
+    stages {
+        stage('Get Code') {
+            steps {
+                git 'https://github.com/withHaseeb/docker-project.git'
+            }
+        }
+        stage('mvn package') {
+            steps {
+                sh 'mvn clean install'
+            }
+        }
+        stage('sonarQube analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube-9.9.0') {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+        stage('build docker image') {
+            steps {
+                sh 'docker image build -t withhaseeb/sonar-image:latest .'
+            }
+        }
+        stage('PUSH image') {
+            steps {
+                withCredentials([string(credentialsId: 'hubpwd', variable: 'hubpwd')]) {
+                sh "docker login -u withhaseeb -p ${hubpwd}"
+                }   
+                sh 'docker push withhaseeb/sonar-image:latest' 
+            }
+        }
+        stage("createcontainer") {
+            steps {
+                sshagent(['ssh-con']) {
+        sh 'ssh -o StrictHostKeyChecking=no ubuntu@172.31.1.61 docker run -p 8000:80 -d --name docker-container withhaseeb/sonar-image:latest'
+                }
+                
+            }
+        }
+    }
+}
